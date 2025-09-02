@@ -109,10 +109,10 @@ DEFAULT_WRITING_PROMPT = """Your custom prompt..."""
 ## API Key Requirements
 
 - **OpenAI**: Get from https://platform.openai.com/account/api-keys
-- **Anthropic**: Get from https://console.anthropic.com/
+- **Anthropic**: Get from https://console.anthropic.com/settings/keys
 - **Google Gemini**: Get from https://makersuite.google.com/app/apikey
-- **Mistral**: Get from https://console.mistral.ai/
-- **Meta**: Contact Meta for API access
+- **Mistral**: Get from https://docs.mistral.ai/api/
+- **Meta**: Get from https://llama.developer.meta.com/docs/api-keys/ (Wait list response is usually within a week)
 
 ## Troubleshooting
 
@@ -146,9 +146,6 @@ This project serves as a template. Feel free to:
 - Support additional providers
 - Enhance output formatting
 
-## License
-
-[Your license choice]
 
 ## Acknowledgments
 

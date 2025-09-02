@@ -45,23 +45,52 @@ MODEL_CONFIGS = {
     }
 }
 
-# Default configurations
-DEFAULT_WRITER_MODEL = MODEL_CONFIGS["openai"]["gpt-4"]
-DEFAULT_CRITIC_MODEL = MODEL_CONFIGS["anthropic"]["sonnet"]  # Using Anthropic for the critic!
-LOG_DIR = "logs"
+# UPDATE: Default model configurations
+DEFAULT_ANALYST_MODEL = MODEL_CONFIGS["openai"]["gpt-4"]                # Using GPT4 for analyst tasks
+DEFAULT_REVIEWER_MODEL = MODEL_CONFIGS["mistral"]["mistral-medium"]     # Using Mistral for compliance review!
+DEFAULT_STRATEGIST_MODEL = MODEL_CONFIGS["anthropic"]["sonnet"]         # Using Anthropic for strategy
+LOG_DIR = "utility_reports"
 
-# UPDATE: System messages for agents
-WRITER_MESSAGE = """You are a creative writer who excels at crafting 
-compelling short stories. You have a talent for vivid imagery, 
-engaging characters, and emotional depth. Write concisely but powerfully."""
+# UPDATE: System messages for utility company agents
+ANALYST_MESSAGE = """You are a senior data analyst for a utility company, specializing in 
+utility operations, energy consumption patterns, and infrastructure analysis. 
+You excel at identifying trends, anomalies, and opportunities for improvement 
+in electric and gas distribution systems. Your reports are clear, data-driven, 
+and focused on operational efficiency and customer service improvement."""
 
-CRITIC_MESSAGE = """You are a thoughtful literary critic who provides 
-constructive feedback. You analyze stories for their strengths and 
-areas for improvement, always maintaining a supportive tone while 
-being specific and actionable in your suggestions."""
+REVIEWER_MESSAGE = """You are a regulatory compliance and risk management expert 
+for a . You review reports for accuracy, regulatory compliance, safety 
+considerations, and potential risks. You ensure all recommendations align with 
+utility industry standards, environmental regulations, and company policies. 
+You provide constructive feedback to strengthen reports before executive review."""
 
-DEFAULT_WRITING_PROMPT = """Write a 3-sentence story about a robot learning to paint. 
-The story should be emotionally engaging and have a clear beginning, middle, and end."""
+STRATEGIST_MESSAGE = """You are a strategic planning executive for a , 
+focused on long-term sustainability, grid modernization, and customer satisfaction. 
+You synthesize technical reports into actionable strategic recommendations, 
+considering factors like renewable energy integration, infrastructure investment, 
+and community impact. You excel at translating operational insights into 
+executive-level strategic initiatives."""
+
+# UPDATE: Default analysis prompt for utility operations
+DEFAULT_ANALYSIS_PROMPT = """
+Analyze the following utility operations scenario and provide recommendations:
+
+SCENARIO: Summer Peak Load Management
+- Peak electricity demand has increased 15% year-over-year
+- Several neighborhoods experiencing frequent voltage fluctuations
+- Customer complaints about power quality have increased 25%
+- Current infrastructure is at 92% capacity during peak hours
+- Budget constraints limit immediate infrastructure upgrades
+
+Please provide:
+1. Root cause analysis
+2. Short-term mitigation strategies
+3. Long-term infrastructure recommendations
+4. Customer communication plan
+5. Cost-benefit analysis of proposed solutions
+
+"""
+
 
 # ========================================================================
 #   Data Classes
@@ -77,11 +106,11 @@ class AgentConfig:
 
 
 @dataclass
-class StoryResult:
-    """Container for story writing results."""
-    original_story: str
-    critique: str
-    revised_story: Optional[str] = None
+class AnalysisResult:
+    """Container for utility analysis results."""
+    initial_analysis: str
+    compliance_review: str
+    strategic_recommendations: Optional[str] = None
     full_history: List[Dict[str, Any]] = None
 
 
@@ -89,7 +118,7 @@ class StoryResult:
 #   Logging Setup
 # ========================================================================
 
-def setup_logging(log_dir: str = LOG_DIR, session_name: str = "multi_agent") -> logging.Logger:
+def setup_logging(log_dir: str = LOG_DIR, session_name: str = "utility_analysis") -> logging.Logger:
     """
     Set up logging configuration with both file and console output.
     
@@ -123,7 +152,7 @@ def setup_logging(log_dir: str = LOG_DIR, session_name: str = "multi_agent") -> 
     
     # Log the startup
     logger.info("=" * 70)
-    logger.info(f"Multi-Agent Writing Session Started")
+    logger.info(f"Multi-Agent Analysis Session Started")
     logger.info(f"Log file: {log_filename}")
     logger.info("=" * 70)
     
@@ -176,7 +205,10 @@ def validate_api_key(api_keys: Dict[str, Optional[str]], provider: str) -> str:
     Raises:
         ValueError: If API key is not found
     """
+    # Set api_key variable
     api_key = api_keys.get(provider)
+    
+    # If key is missing
     if not api_key:
         logger.error(f"No API key found for provider: {provider}")
         raise ValueError(f"API key not found for {provider}. Please check your .env file.")
@@ -199,6 +231,10 @@ def create_llm_config(model_config: Dict[str, str], api_key: str) -> Dict[str, A
     Returns:
         LLM configuration dictionary
     """
+    # Debug logging
+    logger.info(f"Creating config for provider: {model_config['provider']}")
+    logger.info(f"Using API key starting with: {api_key[:8]}...")
+    
     # AutoGen expects different config formats for different providers
     if model_config["provider"] == "anthropic":
         llm_config = {
@@ -207,6 +243,16 @@ def create_llm_config(model_config: Dict[str, str], api_key: str) -> Dict[str, A
                     "model": model_config["model"],
                     "api_key": api_key,
                     "api_type": "anthropic",
+                }
+            ]
+        }
+    elif model_config["provider"] == "mistral":
+        llm_config = {
+            "config_list": [
+                {
+                    "model": model_config["model"],
+                    "api_key": api_key,
+                    "api_type": "mistral",  # Added api_type for Mistral
                 }
             ]
         }
@@ -229,10 +275,10 @@ def create_llm_config(model_config: Dict[str, str], api_key: str) -> Dict[str, A
 #   Agent Creation
 # ========================================================================
 
-def create_writing_agents(agent_configs: List[AgentConfig], 
+def create_utility_agents(agent_configs: List[AgentConfig], 
                          api_keys: Dict[str, Optional[str]]) -> Dict[str, AssistantAgent]:
     """
-    Create all writing agents based on configurations.
+    Create all utility analysis agents based on configurations.
     
     Args:
         agent_configs: List of agent configurations
@@ -276,7 +322,7 @@ def create_user_proxy(max_consecutive_auto_reply: int = 3) -> UserProxyAgent:
     """
     user_proxy = UserProxyAgent(
         name="user_proxy",
-        human_input_mode="NEVER",
+        human_input_mode="NEVER",                                   # Fully autonomous - never asks human
         max_consecutive_auto_reply=max_consecutive_auto_reply,
         code_execution_config=False,
     )
@@ -285,170 +331,182 @@ def create_user_proxy(max_consecutive_auto_reply: int = 3) -> UserProxyAgent:
 
 
 # ========================================================================
-#   Story Writing Workflow
+#   Utility Analysis Workflow
 # ========================================================================
 
-def write_initial_story(user_proxy: UserProxyAgent, 
-                       writer: AssistantAgent, 
-                       prompt: str) -> str:
+def perform_initial_analysis(user_proxy: UserProxyAgent, 
+                           analyst: AssistantAgent, 
+                           prompt: str) -> str:
     """
-    Have the writer create the initial story.
+    Have the analyst perform initial analysis of the utility scenario.
     
     Args:
         user_proxy: User proxy agent
-        writer: Writer agent
-        prompt: Writing prompt
+        analyst: Analyst agent
+        prompt: Analysis prompt
         
     Returns:
-        The generated story
+        The analysis report
     """
-    logger.info(f"Starting story writing with prompt: {prompt}")
+    logger.info(f"Starting utility analysis")
     
     response = user_proxy.initiate_chat(
-        recipient=writer,
+        recipient=analyst,
         message=prompt,
         clear_history=True
     )
     
-    # Get the actual story from the chat history
-    # The story is in the Writer's response, not the last message
-    story = response.chat_history[1]["content"]  # Index 1 is the Writer's response
-    logger.info(f"Writer completed story ({len(story)} characters)")
+    # Get the actual analysis from the chat history
+    analysis = response.chat_history[1]["content"]  # Index 1 is the Analyst's response
+    logger.info(f"Analyst completed analysis ({len(analysis)} characters)")
     
-    return story
+    return analysis
 
 
-def get_critique(user_proxy: UserProxyAgent, 
-                 critic: AssistantAgent, 
-                 story: str) -> str:
+def review_for_compliance(user_proxy: UserProxyAgent, 
+                         reviewer: AssistantAgent, 
+                         analysis: str) -> str:
     """
-    Have the critic provide feedback on the story.
+    Have the reviewer check the analysis for compliance and risks.
     
     Args:
         user_proxy: User proxy agent
-        critic: Critic agent
-        story: The story to critique
+        reviewer: Reviewer agent
+        analysis: The analysis to review
         
     Returns:
-        The critique
+        The compliance review
     """
-    logger.info("Getting critique of the story")
+    logger.info("Getting compliance and risk review")
     
-    critique_prompt = f"""Please provide constructive feedback on this story. 
-    Consider elements like narrative structure, character development, 
-    imagery, and emotional impact. Be specific and helpful.
+    review_prompt = f"""Please review this utility operations analysis for:
+    1. Regulatory compliance issues
+    2. Safety considerations
+    3. Environmental impact
+    4. Risk assessment
+    5. Data accuracy and completeness
     
-    Story:
-    {story}"""
+    Provide specific feedback and flag any concerns.
+    
+    Analysis to review:
+    {analysis}"""
     
     response = user_proxy.initiate_chat(
-        recipient=critic,
-        message=critique_prompt,
+        recipient=reviewer,
+        message=review_prompt,
         clear_history=True
     )
     
-    # Get the actual critique from the chat history
-    critique = response.chat_history[1]["content"]  # Index 1 is the Critic's response
-    logger.info(f"Critic provided feedback ({len(critique)} characters)")
+    # Get the actual review from the chat history
+    review = response.chat_history[1]["content"]  # Index 1 is the Reviewer's response
+    logger.info(f"Reviewer completed compliance check ({len(review)} characters)")
     
-    return critique
+    return review
 
 
-def revise_story(user_proxy: UserProxyAgent, 
-                writer: AssistantAgent, 
-                original_story: str, 
-                critique: str) -> str:
+def develop_strategy(user_proxy: UserProxyAgent, 
+                    strategist: AssistantAgent, 
+                    analysis: str, 
+                    review: str) -> str:
     """
-    Have the writer revise the story based on critique.
+    Have the strategist develop executive recommendations.
     
     Args:
         user_proxy: User proxy agent
-        writer: Writer agent
-        original_story: The original story
-        critique: The critique to address
+        strategist: Strategist agent
+        analysis: The original analysis
+        review: The compliance review
         
     Returns:
-        The revised story
+        Strategic recommendations
     """
-    logger.info("Getting revised story based on critique")
+    logger.info("Developing strategic recommendations")
     
-    revision_prompt = f"""Please revise your story based on this feedback. 
-    Maintain the core concept but improve based on the suggestions.
+    strategy_prompt = f"""Based on the analysis and compliance review below, 
+    develop executive-level strategic recommendations that address:
+    1. Immediate actions (0-3 months)
+    2. Medium-term initiatives (3-12 months)
+    3. Long-term strategic vision (1-5 years)
+    4. Budget and resource allocation
+    5. Stakeholder communication plan
     
-    Original Story:
-    {original_story}
+    Original Analysis:
+    {analysis}
     
-    Critique:
-    {critique}
+    Compliance Review:
+    {review}
     
-    Please provide your revised story:"""
+    Provide clear, actionable recommendations suitable for executive presentation."""
     
     response = user_proxy.initiate_chat(
-        recipient=writer,
-        message=revision_prompt,
+        recipient=strategist,
+        message=strategy_prompt,
         clear_history=True
     )
     
-    # Get the actual revised story from the chat history
-    revised_story = response.chat_history[1]["content"]  # Index 1 is the Writer's response
-    logger.info(f"Writer completed revision ({len(revised_story)} characters)")
+    # Get the actual strategy from the chat history
+    strategy = response.chat_history[1]["content"]  # Index 1 is the Strategist's response
+    logger.info(f"Strategist completed recommendations ({len(strategy)} characters)")
     
-    return revised_story
+    return strategy
 
 
-def run_writing_workshop(agents: Dict[str, AssistantAgent], 
+def run_utility_analysis(agents: Dict[str, AssistantAgent], 
                         user_proxy: UserProxyAgent,
-                        writing_prompt: str,
-                        include_revision: bool = True) -> StoryResult:
+                        analysis_prompt: str,
+                        include_strategy: bool = True) -> AnalysisResult:
     """
-    Run the complete writing workshop workflow.
+    Run the complete utility analysis workflow.
     
     Args:
         agents: Dictionary of agents
         user_proxy: User proxy agent
-        writing_prompt: The initial writing prompt
-        include_revision: Whether to include a revision round
+        analysis_prompt: The initial analysis prompt
+        include_strategy: Whether to include strategic recommendations
         
     Returns:
-        StoryResult with all outputs
+        AnalysisResult with all outputs
     """
     try:
         # Get agents
-        writer = agents["Writer"]
-        critic = agents["Critic"]
+        analyst = agents["Analyst"]
+        reviewer = agents["Reviewer"]
+        strategist = agents.get("Strategist")
         
-        # Step 1: Write initial story
+        # Step 1: Initial analysis
         logger.info("=" * 50)
-        logger.info("STEP 1: Initial Story Writing")
+        logger.info("STEP 1: Initial Utility Analysis")
         logger.info("=" * 50)
-        original_story = write_initial_story(user_proxy, writer, writing_prompt)
+        initial_analysis = perform_initial_analysis(user_proxy, analyst, analysis_prompt)
         
-        # Step 2: Get critique
+        # Step 2: Compliance review
         logger.info("=" * 50)
-        logger.info("STEP 2: Critical Review")
+        logger.info("STEP 2: Compliance and Risk Review")
         logger.info("=" * 50)
-        critique = get_critique(user_proxy, critic, original_story)
+        compliance_review = review_for_compliance(user_proxy, reviewer, initial_analysis)
         
-        # Step 3: Revise story (optional)
-        revised_story = None
-        if include_revision:
+        # Step 3: Strategic recommendations (optional)
+        strategic_recommendations = None
+        if include_strategy and strategist:
             logger.info("=" * 50)
-            logger.info("STEP 3: Story Revision")
+            logger.info("STEP 3: Strategic Recommendations")
             logger.info("=" * 50)
-            revised_story = revise_story(user_proxy, writer, original_story, critique)
+            strategic_recommendations = develop_strategy(
+                user_proxy, strategist, initial_analysis, compliance_review
+            )
         
         # Create result
-        result = StoryResult(
-            original_story=original_story,
-            critique=critique,
-            revised_story=revised_story
+        result = AnalysisResult(
+            initial_analysis=initial_analysis,
+            compliance_review=compliance_review,
+            strategic_recommendations=strategic_recommendations
         )
         
-        logger.info("Writing workshop completed successfully")
+        logger.info("Utility analysis workflow completed successfully")
         return result
         
     except Exception as e:
-        logger.error(f"Error in writing workshop: {str(e)}", exc_info=True)
+        logger.error(f"Error in utility analysis: {str(e)}", exc_info=True)
         raise
 
 
@@ -456,33 +514,27 @@ def run_writing_workshop(agents: Dict[str, AssistantAgent],
 #   Output Formatting
 # ========================================================================
 
-def format_workshop_output(result: StoryResult) -> str:
+def format_analysis_output(result: AnalysisResult) -> str:
     """
-    Format the workshop results for display.
+    Format the analysis results for display.
     
     Args:
-        result: StoryResult object
+        result: AnalysisResult object
         
     Returns:
         Formatted string output
     """
     output = []
-    output.append("\n" + "=" * 70)
-    output.append("WRITING WORKSHOP RESULTS")
-    output.append("=" * 70)
+    output.append("UTILITY ANALYSIS REPORT")
+    output.append("\nINITIAL ANALYSIS:")
+    output.append(result.initial_analysis)
+    output.append("\n\nCOMPLIANCE & RISK REVIEW:")
+    output.append(result.compliance_review)
     
-    output.append("\n📝 ORIGINAL STORY:")
-    output.append("-" * 50)
-    output.append(result.original_story)
-    
-    output.append("\n\n🔍 CRITIQUE:")
-    output.append("-" * 50)
-    output.append(result.critique)
-    
-    if result.revised_story:
-        output.append("\n\n✨ REVISED STORY:")
-        output.append("-" * 50)
-        output.append(result.revised_story)
+    if result.strategic_recommendations:
+        output.append("\n\n🎯 STRATEGIC RECOMMENDATIONS:")
+        
+        output.append(result.strategic_recommendations)
     
     output.append("\n" + "=" * 70 + "\n")
     
@@ -495,53 +547,59 @@ def format_workshop_output(result: StoryResult) -> str:
 
 def main() -> None:
     """
-    Main function that orchestrates the multi-agent writing workshop.
+    Main function that orchestrates the multi-agent utility analysis.
     """
     global logger
     
     try:
         # Initialize logging
-        logger = setup_logging(session_name="writing_workshop")
+        logger = setup_logging(session_name="utility_analysis")
         
         # Load API keys
         api_keys = load_api_keys()
         
-        # Define agent configurations
+        # UPDATE: Define agent configurations
         agent_configs = [
             AgentConfig(
-                name="Writer",
-                system_message=WRITER_MESSAGE,
-                model_config=DEFAULT_WRITER_MODEL,
+                name="Analyst",
+                system_message=ANALYST_MESSAGE,
+                model_config=DEFAULT_ANALYST_MODEL,      
                 max_consecutive_auto_reply=1
             ),
             AgentConfig(
-                name="Critic",
-                system_message=CRITIC_MESSAGE,
-                model_config=DEFAULT_CRITIC_MODEL,  # Using Anthropic!
+                name="Reviewer",
+                system_message=REVIEWER_MESSAGE,
+                model_config=DEFAULT_REVIEWER_MODEL,         
+                max_consecutive_auto_reply=1
+            ),
+            AgentConfig(
+                name="Strategist",
+                system_message=STRATEGIST_MESSAGE,
+                model_config=DEFAULT_STRATEGIST_MODEL,         
                 max_consecutive_auto_reply=1
             )
         ]
         
         # Create agents
-        agents = create_writing_agents(agent_configs, api_keys)
+        agents = create_utility_agents(agent_configs, api_keys)
         
         # Create user proxy
         user_proxy = create_user_proxy(max_consecutive_auto_reply=5)
         
-        # Run the writing workshop
-        result = run_writing_workshop(
+        # Run the analysis workflow
+        result = run_utility_analysis(
             agents=agents,
             user_proxy=user_proxy,
-            writing_prompt=DEFAULT_WRITING_PROMPT,  # Using the global variable
-            include_revision=True                   # Set to False to skip revision
+            analysis_prompt=DEFAULT_ANALYSIS_PROMPT,  # Using the global variable
+            include_strategy=True  # UPDATE: Set to False to skip strategic planning
         )
         
         # Display results
-        formatted_output = format_workshop_output(result)
+        formatted_output = format_analysis_output(result)
         print(formatted_output)
         
         # Save results to file
-        output_file = Path(LOG_DIR) / f"workshop_output_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        output_file = Path(LOG_DIR) / f"analysis_output_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(formatted_output)
         logger.info(f"Results saved to: {output_file}")
@@ -554,7 +612,7 @@ def main() -> None:
         
     finally:
         logger.info("=" * 70)
-        logger.info("Multi-Agent Writing Session Ended")
+        logger.info("Utilities Company Multi-Agent Analysis Session Ended")
         logger.info("=" * 70)
 
 

@@ -20,12 +20,11 @@ This system showcases two practical implementations:
 ## Project Structure
 
 ```
-├── multi_agent_writer.py       # Creative writing workshop implementation
 ├── analyst_reviewer_strategist.py  # Utility analysis implementation
-├── logs/                       # Session logs directory
 ├── utility_reports/            # Analysis output directory
-├── .env                        # API keys (create this)
+├── .env                        # API keys (create this for your project)
 └── requirements.txt            # Python dependencies
+├── README.md                   # Overview of repo
 ```
 
 ## Installation
@@ -54,20 +53,6 @@ META_API_KEY=...
 ```
 
 ## Usage
-
-### Running the Writing Workshop
-
-```bash
-python multi_agent_writer.py
-```
-
-This will:
-- Generate an initial story based on the prompt
-- Provide critical feedback
-- Create a revised version
-- Save all outputs to the logs directory
-
-### Running the Utility Analysis
 
 ```bash
 python analyst_reviewer_strategist.py

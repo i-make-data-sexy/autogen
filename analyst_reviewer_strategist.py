@@ -532,7 +532,7 @@ def format_analysis_output(result: AnalysisResult) -> str:
     output.append(result.compliance_review)
     
     if result.strategic_recommendations:
-        output.append("\n\n🎯 STRATEGIC RECOMMENDATIONS:")
+        output.append("\n\nSTRATEGIC RECOMMENDATIONS:")
         
         output.append(result.strategic_recommendations)
     

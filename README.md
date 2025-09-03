@@ -4,9 +4,7 @@ A template for building multi-agent AI systems using Microsoft's AutoGen framewo
 
 ## Overview
 
-This system showcases two practical implementations:
-- **Creative Writing Workshop**: Multiple agents collaborate to write, critique, and revise stories
-- **Utility Infrastructure Analysis**: Agents analyze operational challenges, ensure compliance, and develop strategic recommendations
+This system showcases a utility infrastructure analysis. Agents analyze operational challenges, ensure compliance, and develop strategic recommendations
 
 ## Features
 
